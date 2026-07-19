@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Cell War WebAR - 30 Cards</title>
+    
+    <!-- ใช้ชุด Library มั่นใจว่าเข้ากันได้ดีที่สุดบน iOS Safari และป้องกันปัญหากล้องจอดำ -->
+    <script src="https://aframe.io/releases/1.3.0/aframe.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.1/dist/mindar-image-aframe.prod.js"></script>
+    
+    <style>
+        /* บังคับหน้าเว็บให้โปร่งใส เพื่อมองทะลุลงไปเห็นวิดีโอกล้องจริง */
+        html, body { 
+            margin: 0; 
+            overflow: hidden; 
+            background: transparent !important;
+            width: 100%;
+            height: 100%;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        /* หน้าจอต้อนรับขออนุญาตเปิดกล้อง (iOS Safari บังคับต้องมี) */
+        #start-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: linear-gradient(135deg, #121214 0%, #000000 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            color: #ffffff;
+            text-align: center;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .icon {
+            font-size: 60px;
+            margin-bottom: 20px;
+            animation: bounce 2s infinite;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin: 0 0 10px 0;
+            color: #00ffcc;
+            text-shadow: 0 0 10px rgba(0, 255, 204, 0.3);
+            font-weight: 800;
+        }
+
+        p {
+            font-size: 14px;
+            color: #a0aec0;
+            max-width: 280px;
+            margin: 0 0 30px 0;
+            line-height: 1.5;
+        }
+
+        /* ปุ่มเริ่มเปิดเลนส์กล้อง */
+        .btn-start {
+            background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%);
+            color: #ffffff;
+            border: none;
+            padding: 15px 40px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(3, 105, 161, 0.4);
+            transition: transform 0.2s, box-shadow 0.2s;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .btn-start:active {
+            transform: scale(0.96);
+            box-shadow: 0 2px 8px rgba(3, 105, 161, 0.4);
+        }
+
+        /* เล็งกรอบเป้าเมื่อพร้อมเล่น */
+        #scanning-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+            pointer-events: none;
+        }
+
+        .scan-frame {
+            width: 250px;
+            height: 250px;
+            border: 2px dashed #00ffcc;
+            border-radius: 15px;
+            box-shadow: 0 0 15px rgba(0, 255, 204, 0.2);
+            position: relative;
+        }
+
+        .scan-text {
+            position: absolute;
+            bottom: 40px;
+            background: rgba(0, 0, 0, 0.7);
+            color: #00ffcc;
+            padding: 8px 18px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: bold;
+            z-index: 1000;
+        }
+
+        /* กล่องแจ้งเตือนความผิดพลาดแบบ Custom UI */
+        #error-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+
+        .error-card {
+            background: #1f1f23;
+            border: 1px solid #ff4d4d;
+            border-radius: 15px;
+            padding: 24px;
+            max-width: 320px;
+            width: 100%;
+            text-align: center;
+            color: white;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+        }
+
+        .error-card h2 {
+            margin: 0 0 10px 0;
+            color: #ff4d4d;
+            font-size: 20px;
+        }
+
+        .error-card p {
+            font-size: 14px;
+            color: #cbd5e1;
+            margin: 0 0 20px 0;
+            line-height: 1.5;
+            max-width: 100%;
+        }
+
+        .btn-close-error {
+            background: #ff4d4d;
+            color: white;
+            border: none;
+            padding: 10px 24px;
+            border-radius: 8px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- 1. ปุ่มสัมผัสเริ่มต้นเปิดสิทธิ์การใช้งานกล้องบน iOS -->
+    <div id="start-overlay">
+        <div class="icon">🔬</div>
+        <h1>CELL WAR WebAR</h1>
+        <p>เพื่อเล่นเกมผ่านเลนส์กล้องของคุณ กรุณาแตะปุ่มด้านล่างเพื่ออนุญาตสิทธิ์กล้อง</p>
+        <button class="btn-start" id="btn-trigger-camera">🚀 เริ่มต้นใช้งานกล้อง</button>
+    </div>
+
+    <!-- 2. เล็งกรอบเป้าสำหรับการสแกนการ์ด -->
+    <div id="scanning-overlay" class="hidden">
+        <div class="scan-frame"></div>
+        <div class="scan-text">🎯 เล็งกล้องไปที่หน้าการ์ดจริง</div>
+    </div>
+
+    <!-- 3. กล่องแจ้งเตือนเมื่อเกิดข้อผิดพลาดในการรันไฟล์ -->
+    <div id="error-overlay" class="hidden">
+        <div class="error-card">
+            <h2>เกิดข้อผิดพลาด ⚠️</h2>
+            <p id="error-text">ไม่สามารถเปิดกล้องหรือโหลดไฟล์ targets.mind ได้</p>
+            <button class="btn-close-error" onclick="document.getElementById('error-overlay').classList.add('hidden')">ตกลง</button>
+        </div>
+    </div>
+
+    <!-- 4. ฉากจำลอง WebAR (ใช้ไฟล์เป้าหมาย targets.mind) -->
+    <a-scene mindar-image="imageTargetSrc: targets.mind; autoStart: false; uiScanning: no; uiLoading: no; uiError: no;" 
+             color-space="sRGB" 
+             renderer="colorManagement: true, sortObjects: true, alpha: true" 
+             vr-mode-ui="enabled: false" 
+             device-orientation-permission-ui="enabled: false">
+      
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+      <!-- การ์ดใบที่ 1 ถึง 5 (Index 0-4) -->
+      <a-entity mindar-image-target="targetIndex: 0">
+        <a-image src="cell1.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1200; loop: true"></a-image>
+        <a-text value="NUCLEUS" color="#FF0055" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 1">
+        <a-image src="cell2.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1000; loop: true"></a-image>
+        <a-text value="NUCLEOLUS" color="#00FFaa" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 2">
+        <a-image src="cell3.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1100; loop: true"></a-image>
+        <a-text value="CHROMATIN/CHROMOSOME" color="#FFbb00" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 3">
+        <a-image src="cell4.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1200; loop: true"></a-image>
+        <a-text value="RER" color="#FF0055" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 4">
+        <a-image src="cell5.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1000; loop: true"></a-image>
+        <a-text value="SER" color="#00FFaa" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <!-- การ์ดใบที่ 6 ถึง 10 (Index 5-9) -->
+      <a-entity mindar-image-target="targetIndex: 5">
+        <a-image src="cell6.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1100; loop: true"></a-image>
+        <a-text value="RIBOSOME" color="#FFbb00" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 6">
+        <a-image src="cell7.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1200; loop: true"></a-image>
+        <a-text value="GOLGI COMPLEX" color="#FF0055" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 7">
+        <a-image src="cell8.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1000; loop: true"></a-image>
+        <a-text value="VESICLE" color="#00FFaa" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 8">
+        <a-image src="cell9.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1100; loop: true"></a-image>
+        <a-text value="MITOCHONDRIA" color="#FFbb00" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 9">
+        <a-image src="cell10.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1200; loop: true"></a-image>
+        <a-text value="CHLOROPLAST" color="#FF0055" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <!-- การ์ดใบที่ 11 ถึง 15 (Index 10-14) -->
+      <a-entity mindar-image-target="targetIndex: 10">
+        <a-image src="cell11.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1000; loop: true"></a-image>
+        <a-text value="LYSOSOME" color="#00FFaa" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 11">
+        <a-image src="cell12.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1100; loop: true"></a-image>
+        <a-text value="PEROXISOME" color="#FFbb00" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 12">
+        <a-image src="cell13.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1200; loop: true"></a-image>
+        <a-text value="CENTRIOLE" color="#FF0055" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 13">
+        <a-image src="cell14.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1000; loop: true"></a-image>
+        <a-text value="MICROTUBULE" color="#00FFaa" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 14">
+        <a-image src="cell15.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1100; loop: true"></a-image>
+        <a-text value="MICROFILAMENT" color="#FFbb00" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <!-- การ์ดใบที่ 16 ถึง 20 (Index 15-19) -->
+      <a-entity mindar-image-target="targetIndex: 15">
+        <a-image src="cell16.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1200; loop: true"></a-image>
+        <a-text value="VACUOLE" color="#FF0055" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 16">
+        <a-image src="cell17.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1000; loop: true"></a-image>
+        <a-text value="CELL MEMBRANE" color="#00FFaa" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 17">
+        <a-image src="cell18.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1100; loop: true"></a-image>
+        <a-text value="CELL WALL" color="#FFbb00" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 18">
+        <a-image src="cell19.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1200; loop: true"></a-image>
+        <a-text value="CYTOPLASM" color="#FF0055" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 19">
+        <a-image src="cell20.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1000; loop: true"></a-image>
+        <a-text value="PLASMODESMATA" color="#00FFaa" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <!-- การ์ดใบที่ 21 ถึง 25 (Index 20-24) -->
+      <a-entity mindar-image-target="targetIndex: 20">
+        <a-image src="cell21.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1100; loop: true"></a-image>
+        <a-text value="PHOSPHOLIPID BILAYER" color="#FFbb00" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 21">
+        <a-image src="cell22.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1200; loop: true"></a-image>
+        <a-text value="GLYCOPROTEIN" color="#FF0055" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 22">
+        <a-image src="cell23.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1000; loop: true"></a-image>
+        <a-text value="CILIA" color="#00FFaa" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 23">
+        <a-image src="cell24.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1100; loop: true"></a-image>
+        <a-text value="FLAGELLUM" color="#FFbb00" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 24">
+        <a-image src="cell25.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1200; loop: true"></a-image>
+        <a-text value="NUCLEAR PORE" color="#FF0055" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <!-- การ์ดใบที่ 26 ถึง 30 (Index 25-29) -->
+      <a-entity mindar-image-target="targetIndex: 25">
+        <a-image src="cell26.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1000; loop: true"></a-image>
+        <a-text value="AMYLOPLAST" color="#00FFaa" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 26">
+        <a-image src="cell27.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1100; loop: true"></a-image>
+        <a-text value="CHROMOPLAST" color="#FFbb00" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 27">
+        <a-image src="cell28.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1200; loop: true"></a-image>
+        <a-text value="CYTOSKELETON" color="#FF0055" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 28">
+        <a-image src="cell29.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1000; loop: true"></a-image>
+        <a-text value="NUCLEAR ENVELOPE" color="#00FFaa" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+      <a-entity mindar-image-target="targetIndex: 29">
+        <a-image src="cell30.PNG" position="0 0 0.1" width="0.9" height="0.9" animation="property: position; to: 0 0.1 0.1; dir: alternate; dur: 1100; loop: true"></a-image>
+        <a-text value="TONOPLAST" color="#FFbb00" align="center" position="0 -0.5 0.2" scale="0.5 0.5 0.5" font="https://cdn.aframe.io/fonts/DejaVu-sdf.fnt"></a-text>
+      </a-entity>
+
+    </a-scene>
+
+    <script>
+        const startOverlay = document.getElementById('start-overlay');
+        const scanningOverlay = document.getElementById('scanning-overlay');
+        const errorOverlay = document.getElementById('error-overlay');
+        const errorText = document.getElementById('error-text');
+        const btnTrigger = document.getElementById('btn-trigger-camera');
+        const sceneEl = document.querySelector('a-scene');
+
+        // สัมผัสปุ่มเพื่อเริ่มต้นเปิดกล้อง (ทำงานหลังจากมีการตอบสนองจากผู้เล่นเพื่อความปลอดภัยของ iOS)
+        btnTrigger.addEventListener('click', () => {
+            startOverlay.classList.add('hidden');
+            scanningOverlay.classList.remove('hidden');
+
+            // เริ่มการทำงานระบบ MindAR
+            const arSystem = sceneEl.systems["mindar-image-system"];
+            if (arSystem) {
+                arSystem.start();
+            }
+
+            // บังคับวิดีโอกล้องให้แสดงผลซ้อนด้านหลังซีน 3D ของ A-Frame และล้างพื้นหลังสีดำของ Canvas
+            const forceCameraInterval = setInterval(() => {
+                const videoEl = document.querySelector('video');
+                const canvasEl = document.querySelector('.a-canvas');
+                
+                // 1. ปรับสไตล์ของวิดีโอกล้องสดให้อยู่ด้านหลังสุดอย่างสมบูรณ์
+                if (videoEl) {
+                    videoEl.setAttribute('playsinline', '');
+                    videoEl.setAttribute('webkit-playsinline', '');
+                    videoEl.style.display = 'block';
+                    videoEl.style.position = 'absolute';
+                    videoEl.style.top = '0px';
+                    videoEl.style.left = '0px';
+                    videoEl.style.width = '100%';
+                    videoEl.style.height = '100%';
+                    videoEl.style.objectFit = 'cover';
+                    videoEl.style.zIndex = '-2';
+                    
+                    videoEl.play().catch(e => console.log("iOS Autoplay waiting...", e));
+                }
+
+                // 2. ปรับ Canvas 3D ของ A-Frame ให้พื้นหลังเป็นโปร่งใส เพื่อเผยภาพจากกล้องหลัง
+                if (canvasEl) {
+                    canvasEl.style.backgroundColor = 'transparent';
+                    canvasEl.style.background = 'transparent';
+                }
+
+                // ปิดลูปการดักเมื่อปรับคุณสมบัติสำเร็จแล้ว
+                if (videoEl && canvasEl) {
+                    clearInterval(forceCameraInterval);
+                }
+            }, 300);
+        });
+
+        // ดักเอเรอร์ระบบกล้องและแจ้งเตือนผู้ใช้งานผ่าน Custom Modal
+        sceneEl.addEventListener("arError", (event) => {
+            scanningOverlay.classList.add('hidden');
+            errorText.textContent = "ไม่สามารถเปิดกล้องหลังได้ กรุณาเปิดเว็บด้วย Safari และกดอนุญาตกล้องใหม่อีกครั้ง หรือตรวจสอบไฟล์ targets.mind (Error: " + event.detail.error + ")";
+            errorOverlay.classList.remove('hidden');
+        });
+
+        sceneEl.addEventListener("targetFound", () => {
+            scanningOverlay.classList.add('hidden');
+        });
+
+        sceneEl.addEventListener("targetLost", () => {
+            scanningOverlay.classList.remove('hidden');
+        });
+    </script>
+</body>
+</html>
